@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game</title>
+    <style>
+      @import url("https://fonts.cdnjs.com/css2?family=VT323&display=swap");
+      @import url("https://fonts.cdnjs.com/css2?family=Inter:wght@400;500&display=swap");
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background-color: #f48120;
+        font-family: "Inter", sans-serif;
+        min-height: 100vh;
+        margin: 0;
+        color: #fff;
+        display: flex;
+      }
+
+      /* Sidebar Styles */
+      .sidebar {
+        width: 300px;
+        background-color: #f48120;
+        border-right: 4px solid #fff;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .player-count {
+        font-family: "VT323", monospace;
+        font-size: 24px;
+        color: #44ff44;
+        text-align: center;
+        padding: 15px;
+        background: #222;
+        border-radius: 4px;
+      }
+
+      .qr-section {
+        background: #222;
+        padding: 20px;
+        border-radius: 4px;
+        text-align: center;
+      }
+
+      .qr-placeholder {
+        width: 200px;
+        height: 200px;
+        margin: 0 auto;
+        background: #333;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "VT323", monospace;
+        border: 2px dashed #666;
+      }
+
+      .scores-section {
+        flex-grow: 1;
+        background: #222;
+        padding: 15px;
+        border-radius: 4px;
+      }
+
+      .scores-title {
+        font-family: "VT323", monospace;
+        font-size: 20px;
+        margin-bottom: 15px;
+        text-align: center;
+      }
+
+      .score-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px;
+        background: #333;
+        margin-bottom: 8px;
+        border-radius: 2px;
+        font-size: 14px;
+      }
+
+      /* Main Content Styles */
+      .main-content {
+        flex-grow: 1;
+        padding: 20px;
+        position: relative;
+      }
+
+      .game-screen {
+        background: #000;
+        border: 4px solid #fff;
+        border-radius: 4px;
+        height: calc(100vh - 40px);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .disabled-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+      }
+
+      .waiting-text {
+        font-family: "VT323", monospace;
+        font-size: 36px;
+        text-align: center;
+        color: #fff;
+        text-shadow: 2px 2px #000;
+      }
+
+      .start-button {
+        padding: 15px 40px;
+        background: #fff;
+        border: none;
+        color: #000;
+        font-family: "VT323", monospace;
+        font-size: 24px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+      }
+
+      .start-button:hover {
+        background: #ccc;
+      }
+
+      .start-button:disabled {
+        background: #666;
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+      .game-canvas {
+        display: none;
+        width: 100%;
+        height: 100%;
+      }
+
+      .game-canvas canvas {
+        width: 100% !important;
+        height: 100% !important;
+      }
+    </style>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"
+      integrity="sha512-pUhApVQtLbnpLtJn6DuzDD5o2xtmLJnJ7oBoMsBnzOkVkpqofGLGPaBJ6ayD2zQe3lCgCibhJBi4cj5wAxwVKA=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+  </head>
+  <body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="player-count">PLAYERS: <span id="playerCount">0</span></div>
+
+      <div class="qr-section">
+        <h2 class="scores-title">SCAN TO JOIN</h2>
+
+        <canvas id="qr" class="qr-placeholder"></canvas>
+      </div>
+
+      <div class="scores-section">
+        <h2 class="scores-title">SCORES</h2>
+        <div id="scoresList">
+          <!-- Scores will be added here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <div class="game-screen">
+        <div class="disabled-overlay" id="gameOverlay">
+          <div class="waiting-text">WAITING...</div>
+          <button class="start-button" id="startButton" disabled>
+            START GAME
+          </button>
+        </div>
+        <div class="game-canvas">
+          <canvas
+            id="backgroundCanvas"
+            width="800"
+            height="600"
+            style="position: absolute; top: 0; left: 0"
+          ></canvas>
+          <canvas
+            id="phoneCanvas"
+            width="800"
+            height="600"
+            style="position: absolute; top: 0; left: 0"
+          ></canvas>
+          <canvas
+            id="sentenceCanvas"
+            width="800"
+            height="600"
+            style="position: absolute; top: 0; left: 0"
+          ></canvas>
+        </div>
+      </div>
+    </div>
+    <script type="module">
+      import PhoneMovementDisplay from "./phone.js";
+      // Get Game ID
+      const urlParams = new URLSearchParams(window.location.search);
+      const gameId = urlParams.get("gameId");
+      let gameStart = false;
+
+      // Update player count
+      function updatePlayerCount(count) {
+        const playerCount = document.getElementById("playerCount");
+        const startButton = document.getElementById("startButton");
+
+        playerCount.textContent = count;
+        startButton.disabled = count === 0;
+      }
+
+      // Update scores
+      function updateScores(players) {
+        const scoresList = document.getElementById("scoresList");
+
+        scoresList.innerHTML = "";
+
+        // Sort players by score in descending order
+        const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+
+        sortedPlayers.forEach((player) => {
+          const scoreItem = document.createElement("div");
+          scoreItem.classList.add("score-item");
+          scoreItem.innerHTML = `
+            <span>${player.name}</span>
+            <span>${player.score}</span>
+          `;
+
+          scoresList.appendChild(scoreItem);
+        });
+      }
+
+      // Connect to the WebSocket server
+      const ws = new WebSocket(
+        window.location.hostname == "localhost"
+          ? `ws://${window.location.host}/parties/websocket-server/${gameId}`
+          : `wss://${window.location.host}/parties/websocket-server/${gameId}`
+      );
+
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+
+        if (message.type === "playerCount" && message.from === "admin") {
+          players = message.data.players;
+          updatePlayerCount(message.data.players.length);
+          updateScores(message.data.players);
+        }
+        if (message.type === "updateObstacles" && message.from === "admin") {
+          obstacles = message.data.obstacles;
+        }
+        // if (message.type === "playerUpdates" && message.from === "admin") {
+        //   players.find((player) => {
+        //     player.id === message.data.player.id
+        //       ? (player.color = message.data.player.color)
+        //       : "blue";
+        //   });
+        //   console.log("after color", JSON.stringify(players));
+        // }
+        if (message.type === "move" && message.from === "admin" && gameStart) {
+          const { id, acceleration } = message.data;
+          // Update player acceleration
+          const player = players.find((player) => player.id === id);
+          console.log(player);
+          player.acceleration = acceleration;
+        }
+      };
+
+      ws.onopen = () => {
+        ws.send(
+          JSON.stringify({
+            type: "join",
+            from: "admin",
+          })
+        );
+      };
+
+      // Start game when button is clicked
+      const startButton = document.getElementById("startButton");
+      const gameOverlay = document.getElementById("gameOverlay");
+      const gameCanvas = document.querySelector(".game-canvas");
+
+      startButton.addEventListener("click", () => {
+        ws.send(
+          JSON.stringify({
+            type: "start",
+            from: "admin",
+          })
+        );
+        gameStart = true;
+        gameOverlay.style.display = "none";
+        gameCanvas.style.display = "block";
+        solution = new Array(obstacles.length).fill(null);
+        displayCurrentSentence();
+        refreshDisplay();
+      });
+
+      // Canvas setup
+      const backgroundCanvas = document.getElementById("backgroundCanvas");
+      const phoneCanvas = document.getElementById("phoneCanvas");
+      const sentenceCanvas = document.getElementById("sentenceCanvas");
+      const gameScreen = document.querySelector(".game-screen");
+
+      const backgroundCtx = backgroundCanvas.getContext("2d");
+      const phoneCtx = phoneCanvas.getContext("2d");
+      const sentenceCtx = sentenceCanvas.getContext("2d");
+
+      function resizeCanvases() {
+        const width = gameScreen.clientWidth;
+        const height = gameScreen.clientHeight;
+
+        [backgroundCanvas, phoneCanvas, sentenceCanvas].forEach((canvas) => {
+          canvas.width = width;
+          canvas.height = height;
+        });
+      }
+
+      // Call initially and add event listener
+      resizeCanvases();
+      window.addEventListener("resize", resizeCanvases);
+
+      // State for objects being controlled
+      let phoneDisplays = {}; // Store PhoneMovementDisplay instances for phones
+      let players = []; // Player data
+      let obstacles = []; // Bouncing words
+      let solution = []; // Initialize solution with placeholders
+      let displaySentence = null; // Sentence to temporarily display
+      let displayTimeout = null; // Timeout for clearing the sentence display
+
+      const OBSTACLE_SPEED = 2;
+      const CANVAS_PADDING = 40; // Increased padding
+      const OBSTACLE_HEIGHT = 50; // New constant for obstacle height
+      const PHONE_SIZE = 50; // New constant for phone size
+
+      // Draw obstacles
+      function drawObstacles() {
+        backgroundCtx.clearRect(
+          0,
+          0,
+          backgroundCanvas.width,
+          backgroundCanvas.height
+        );
+        obstacles.forEach((obstacle) => {
+          backgroundCtx.font = '24px Inter, "SF Pro", Arial, sans-serif'; // Increased font size
+          const textWidth = backgroundCtx.measureText(obstacle.word).width;
+          const rectWidth = textWidth + CANVAS_PADDING;
+          const rectHeight = OBSTACLE_HEIGHT;
+
+          backgroundCtx.fillStyle = obstacle.color;
+          backgroundCtx.fillRect(obstacle.x, obstacle.y, rectWidth, rectHeight);
+          backgroundCtx.fillStyle = "white";
+          backgroundCtx.textAlign = "center";
+          backgroundCtx.fillText(
+            obstacle.word,
+            obstacle.x + rectWidth / 2,
+            obstacle.y + rectHeight / 2 + 8 // Adjusted vertical alignment
+          );
+        });
+      }
+
+      function updateObstacles() {
+        obstacles.forEach((obstacle) => {
+          // Update position
+          obstacle.x += obstacle.dx;
+          obstacle.y += obstacle.dy;
+
+          // Get obstacle dimensions
+          const textWidth = backgroundCtx.measureText(obstacle.word).width;
+          const rectWidth = textWidth + CANVAS_PADDING;
+          const rectHeight = OBSTACLE_HEIGHT;
+
+          // Bounce off walls
+          if (
+            obstacle.x <= 0 ||
+            obstacle.x + rectWidth >= backgroundCanvas.width
+          ) {
+            obstacle.dx *= -1;
+          }
+          if (
+            obstacle.y <= 0 ||
+            obstacle.y + rectHeight >= backgroundCanvas.height
+          ) {
+            obstacle.dy *= -1;
+          }
+        });
+        drawObstacles();
+      }
+
+      function drawPlayers() {
+        phoneCtx.clearRect(0, 0, phoneCanvas.width, phoneCanvas.height);
+        if (gameStart) {
+          players.forEach((player) => {
+            let display = phoneDisplays[player.id];
+
+            // Initialize new player with larger size
+            if (!display) {
+              display = new PhoneMovementDisplay(
+                "phoneCanvas",
+                "📱",
+                player.color,
+                PHONE_SIZE // Pass phone size to constructor
+              );
+              phoneDisplays[player.id] = display;
+              // Initialize at center
+              const centerX = phoneCanvas.width / 2;
+              const centerY = phoneCanvas.height / 2;
+              display.updateTargetPosition(centerX, centerY);
+            }
+
+            // Update position based on acceleration
+            if (player.acceleration) {
+              const { x, y } = player.acceleration;
+              // Scale movement based on canvas size
+              const scaleX = phoneCanvas.width / 800;
+              const scaleY = phoneCanvas.height / 600;
+              const targetX = phoneCanvas.width / 2 - x * 50 * scaleX;
+              const targetY = phoneCanvas.height / 2 - y * 50 * scaleY;
+
+              // Update target position with bounds checking
+              const boundedX = Math.max(
+                0,
+                Math.min(phoneCanvas.width - PHONE_SIZE, targetX)
+              );
+              const boundedY = Math.max(
+                0,
+                Math.min(phoneCanvas.height - PHONE_SIZE, targetY)
+              );
+
+              display.updateTargetPosition(boundedX, boundedY);
+            }
+
+            display.draw();
+            checkCollisions(player, display);
+          });
+        }
+      }
+
+      function checkCollisions(player, display) {
+        // Scale phone dimensions based on canvas size
+        const scaleX = phoneCanvas.width / 800;
+        const scaleY = phoneCanvas.height / 600;
+        const phoneWidth = PHONE_SIZE * scaleX;
+        const phoneHeight = PHONE_SIZE * scaleY;
+
+        const phoneLeft = display.current.x;
+        const phoneRight = display.current.x + phoneWidth;
+        const phoneTop = display.current.y;
+        const phoneBottom = display.current.y + phoneHeight;
+
+        obstacles.forEach((obstacle, index) => {
+          if (
+            obstacle.lastCollision &&
+            Date.now() - obstacle.lastCollision < 500
+          ) {
+            return;
+          }
+
+          backgroundCtx.font = '24px Inter, "SF Pro", Arial, sans-serif';
+          const textWidth = backgroundCtx.measureText(obstacle.word).width;
+          const rectWidth = (textWidth + CANVAS_PADDING) * scaleX;
+          const rectHeight = OBSTACLE_HEIGHT * scaleY;
+
+          const collision =
+            phoneRight > obstacle.x &&
+            phoneLeft < obstacle.x + rectWidth &&
+            phoneBottom > obstacle.y &&
+            phoneTop < obstacle.y + rectHeight;
+
+          if (collision) {
+            obstacle.lastCollision = Date.now();
+            handleCollision(player, obstacle, index);
+          }
+        });
+      }
+
+      function handleCollision(player, obstacle, obstacleIndex) {
+        // Award points based on word length
+        const points = obstacle.word.length * 100;
+        player.score += points;
+
+        // Add word to solution array at correct position
+        solution[obstacle.index] = obstacle.word;
+
+        // Remove the obstacle
+        obstacles.splice(obstacleIndex, 1);
+
+        // Update scores display
+        updateScores(players);
+
+        // Display the current sentence progress
+        displayCurrentSentence();
+
+        // Check if all obstacles are cleared
+        if (obstacles.length === 0) {
+          handleGameComplete();
+        }
+      }
+
+      function displayCurrentSentence() {
+        // Clear the sentence canvas
+        sentenceCtx.clearRect(
+          0,
+          0,
+          sentenceCanvas.width,
+          sentenceCanvas.height
+        );
+
+        // Set text properties
+        sentenceCtx.font = '20px Inter, "SF Pro", Arial, sans-serif';
+        sentenceCtx.fillStyle = "white";
+        sentenceCtx.textAlign = "center";
+
+        // Create the sentence string, using placeholders for missing words
+        const sentenceText = solution.map((word) => word || "_____").join(" ");
+
+        // Display the sentence at the bottom of the canvas with 30px padding
+        sentenceCtx.fillText(
+          sentenceText,
+          sentenceCanvas.width / 2,
+          sentenceCanvas.height - 30
+        );
+      }
+
+      function handleGameComplete() {
+        // Display completion message
+        sentenceCtx.font = '32px "VT323", monospace';
+        sentenceCtx.fillStyle = "#44ff44";
+        sentenceCtx.textAlign = "center";
+        sentenceCtx.fillText(
+          "Sentence Complete!",
+          sentenceCanvas.width / 2,
+          sentenceCanvas.height / 2
+        );
+
+        // Stop the game after a brief delay
+        setTimeout(() => {
+          gameStart = false;
+          ws.send(
+            JSON.stringify({
+              type: "end",
+              from: "admin",
+            })
+          );
+          gameOverlay.style.display = "flex";
+          gameCanvas.style.display = "none";
+        }, 3000);
+      }
+
+      function refreshDisplay() {
+        if (displaySentence && !displayTimeout) {
+          displayTimeout = setTimeout(() => {
+            clearTimeout(displayTimeout);
+            displayTimeout = null;
+            displaySentence = null;
+            refreshDisplay();
+          }, 3000);
+          return;
+        }
+        drawPlayers();
+        updateObstacles();
+        drawObstacles();
+        // debugDraw();
+        requestAnimationFrame(refreshDisplay);
+      }
+
+      function debugDraw() {
+        const scaleX = phoneCanvas.width / 800;
+        const scaleY = phoneCanvas.height / 600;
+
+        // Draw phone hitboxes
+        phoneCtx.strokeStyle = "rgba(255, 0, 0, 0.5)";
+        phoneCtx.lineWidth = 2;
+        players.forEach((player) => {
+          const display = phoneDisplays[player.id];
+          const phoneSize = PHONE_SIZE * scaleX;
+
+          phoneCtx.strokeRect(
+            display.current.x,
+            display.current.y,
+            phoneSize,
+            phoneSize
+          );
+
+          // Draw center point
+          phoneCtx.fillStyle = "red";
+          phoneCtx.beginPath();
+          phoneCtx.arc(
+            display.current.x + phoneSize / 2,
+            display.current.y + phoneSize / 2,
+            2,
+            0,
+            Math.PI * 2
+          );
+          phoneCtx.fill();
+        });
+
+        // Draw obstacle hitboxes
+        backgroundCtx.strokeStyle = "rgba(0, 255, 0, 0.5)";
+        backgroundCtx.lineWidth = 2;
+        obstacles.forEach((obstacle) => {
+          backgroundCtx.font = '24px Inter, "SF Pro", Arial, sans-serif';
+          const textWidth = backgroundCtx.measureText(obstacle.word).width;
+          const rectWidth = (textWidth + CANVAS_PADDING) * scaleX;
+          const rectHeight = OBSTACLE_HEIGHT * scaleY;
+
+          backgroundCtx.strokeRect(
+            Math.round(obstacle.x),
+            Math.round(obstacle.y),
+            rectWidth,
+            rectHeight
+          );
+
+          backgroundCtx.fillStyle = "green";
+          backgroundCtx.beginPath();
+          backgroundCtx.arc(
+            Math.round(obstacle.x + rectWidth / 2),
+            Math.round(obstacle.y + rectHeight / 2),
+            2,
+            0,
+            Math.PI * 2
+          );
+          backgroundCtx.fill();
+        });
+      }
+
+      const qr = new QRious({
+        element: document.getElementById("qr"),
+        value: window.location.protocol + "//" + window.location.hostname,
+      });
+    </script>
+  </body>
+</html>

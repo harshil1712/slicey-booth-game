@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game</title>
+    <style>
+      @import url("https://fonts.cdnjs.com/css2?family=VT323&display=swap");
+      @import url("https://fonts.cdnjs.com/css2?family=Inter:wght@400;500&display=swap");
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background-color: #2c2c2c;
+        font-family: "Inter", sans-serif;
+        min-height: 100vh;
+        margin: 0;
+        color: #fff;
+        display: flex;
+      }
+
+      /* Sidebar Styles */
+      .sidebar {
+        width: 300px;
+        background-color: #000;
+        border-right: 4px solid #fff;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .player-count {
+        font-family: "VT323", monospace;
+        font-size: 24px;
+        color: #44ff44;
+        text-align: center;
+        padding: 15px;
+        background: #222;
+        border-radius: 4px;
+      }
+
+      .qr-section {
+        background: #222;
+        padding: 20px;
+        border-radius: 4px;
+        text-align: center;
+      }
+
+      .qr-placeholder {
+        width: 200px;
+        height: 200px;
+        margin: 0 auto;
+        background: #333;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "VT323", monospace;
+        border: 2px dashed #666;
+      }
+
+      .scores-section {
+        flex-grow: 1;
+        background: #222;
+        padding: 15px;
+        border-radius: 4px;
+      }
+
+      .scores-title {
+        font-family: "VT323", monospace;
+        font-size: 20px;
+        margin-bottom: 15px;
+        text-align: center;
+      }
+
+      .score-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px;
+        background: #333;
+        margin-bottom: 8px;
+        border-radius: 2px;
+        font-size: 14px;
+      }
+
+      /* Main Content Styles */
+      .main-content {
+        flex-grow: 1;
+        padding: 20px;
+        position: relative;
+      }
+
+      .game-screen {
+        background: #000;
+        border: 4px solid #fff;
+        border-radius: 4px;
+        height: calc(100vh - 40px);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .disabled-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+      }
+
+      .waiting-text {
+        font-family: "VT323", monospace;
+        font-size: 36px;
+        text-align: center;
+        color: #fff;
+        text-shadow: 2px 2px #000;
+      }
+
+      .start-button {
+        padding: 15px 40px;
+        background: #fff;
+        border: none;
+        color: #000;
+        font-family: "VT323", monospace;
+        font-size: 24px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+      }
+
+      .start-button:hover {
+        background: #ccc;
+      }
+
+      .start-button:disabled {
+        background: #666;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Main Content -->
+    <div class="main-content">
+      <div class="game-screen">
+        <div class="disabled-overlay" id="gameOverlay">
+          <div class="waiting-text">Score</div>
+          <!-- <div id="motionPermissionButton"></div> -->
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Get Game ID
+      const urlParams = new URLSearchParams(window.location.search);
+      const gameId = urlParams.get("gameId");
+      let isConnected = false;
+      let lastMotionSentTime = 0;
+      const motionThrottleInterval = 50;
+      let id = null;
+      let color;
+
+      // Check device type
+      const device = /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent)
+        ? "Mobile"
+        : "Desktop";
+
+      if (device === "Desktop") {
+        alert("Only works on mobile phones. Please open it on a phone");
+        window.location.replace("/");
+      }
+
+      // Get name from localStorage
+      const name = localStorage.getItem("name");
+
+      // Display Score
+      const displayScore = (score) => {
+        const overlay = document.getElementById("gameOverlay");
+        overlay.innerHTML = `<div class="waiting-text">Score: ${score}</div>`;
+      };
+
+      // Connect to the WebSocket server
+      const ws = new WebSocket(
+        window.location.hostname == "localhost"
+          ? `ws://${window.location.host}/parties/websocket-server/${gameId}`
+          : `wss://${window.location.host}/parties/websocket-server/${gameId}`
+      );
+
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+
+        if (message.type === "score" && message.from === "admin") {
+          displayScore(message.data);
+        }
+        if (message.type === "start" && message.from === "admin") {
+          console.log("Game started", message.data);
+        }
+        if (message.type === "playerUpdates" && message.from === "admin") {
+          id = message.data.player.id;
+          color = message.data.player.color;
+          // Change background color of the page
+          document.getElementsByClassName("game-screen")[0].style.background =
+            color;
+        }
+      };
+
+      ws.onopen = () => {
+        isConnected = true;
+        ws.send(
+          JSON.stringify({
+            type: "join",
+            from: "player",
+            data: { name },
+          })
+        );
+      };
+
+      // Prevent phone from sleeping
+      let wakeLock = null;
+      async function requestWakeLock() {
+        if ("wakeLock" in navigator) {
+          try {
+            wakeLock = await navigator.wakeLock.request("screen");
+            console.log("Wake lock is active");
+
+            wakeLock.addEventListener("release", () => {
+              console.log("Wake lock was released");
+            });
+          } catch (err) {
+            console.error("Failed to acquire wake lock:", err);
+          }
+        } else {
+          console.log("Wake Lock API not supported");
+        }
+      }
+
+      // Re-request wake lock on visibility change
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && wakeLock === null) {
+          requestWakeLock();
+        }
+      });
+
+      requestWakeLock();
+
+      // Add button for motion sensor permissions on iOS
+      if (
+        typeof DeviceMotionEvent !== "undefined" &&
+        typeof DeviceMotionEvent.requestPermission === "function"
+      ) {
+        const motionPermissionButton = document.createElement("button");
+        motionPermissionButton.textContent =
+          "Request Permission to Motion Info";
+        motionPermissionButton.style.position = "absolute";
+        motionPermissionButton.style.top = "10px";
+        motionPermissionButton.style.left = "10px";
+        motionPermissionButton.addEventListener("click", async () => {
+          try {
+            const permissionState = await DeviceMotionEvent.requestPermission();
+            if (permissionState === "granted") {
+              motionPermissionButton.remove(); // Remove button after permission is granted
+            } else {
+              alert(
+                "Motion sensor access denied. The app may not function correctly."
+              );
+            }
+          } catch (error) {
+            console.error("Error requesting motion permission:", error);
+          }
+        });
+        document.body.appendChild(motionPermissionButton);
+      }
+
+      window.addEventListener("devicemotion", (event) => {
+        const currentTime = Date.now();
+        if (currentTime - lastMotionSentTime >= motionThrottleInterval) {
+          lastMotionSentTime = currentTime;
+
+          const { accelerationIncludingGravity, rotationRate } = event;
+          if (accelerationIncludingGravity && rotationRate) {
+            const message = {
+              type: "move",
+              from: "player",
+              data: {
+                name: name,
+                id: id,
+                // color: assignedColor,
+                acceleration: {
+                  x: accelerationIncludingGravity.x,
+                  y: accelerationIncludingGravity.y,
+                  z: accelerationIncludingGravity.z,
+                },
+                rotation: {
+                  alpha: rotationRate.alpha,
+                  beta: rotationRate.beta,
+                  gamma: rotationRate.gamma,
+                },
+              },
+            };
+            if (isConnected) {
+              ws.send(JSON.stringify(message));
+            }
+          }
+        }
+      });
+    </script>
+  </body>
+</html>
