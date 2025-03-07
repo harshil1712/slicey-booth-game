@@ -109,6 +109,69 @@
       button {
         transition: all 0.2s ease;
       }
+
+      .terms-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .terms-group input[type="checkbox"] {
+        width: auto;
+        cursor: pointer;
+      }
+
+      .terms-label {
+        display: inline;
+        font-family: "Inter", sans-serif;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      .resources-footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: rgba(0, 0, 0, 0.8);
+        padding: 20px;
+        backdrop-filter: blur(5px);
+      }
+
+      .resources-container {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+
+      .resources-footer h3 {
+        color: #f48120;
+        font-family: "VT323", monospace;
+        text-align: center;
+        margin-bottom: 15px;
+        font-size: 20px;
+      }
+
+      .resources-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        justify-items: center;
+      }
+
+      .resources-grid a {
+        color: #fff;
+        text-decoration: none;
+        font-family: "VT323", monospace;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: color 0.2s ease;
+      }
+
+      .resources-grid a:hover {
+        color: #f48120;
+      }
     </style>
   </head>
   <body>
@@ -134,14 +197,46 @@
             placeholder="Enter your email"
           />
         </div>
-        <input type="hidden" id="gameId" required value="123456" />
+        <div class="form-group terms-group">
+          <input type="checkbox" id="terms" required />
+          <label for="terms" class="terms-label"
+            >I would like to receive occasional email updates and special offers
+            for Cloudflare products, services, and events from Cloudflare.
+            Please review Cloudflare's
+            <a href="" target="_blank">Privacy Policy</a> to learn more about
+            how Cloudflare handles your personal data.
+          </label>
+        </div>
         <div class="error" id="errorMessage"></div>
         <button type="submit">START</button>
       </form>
       <div class="footer">Press START to join the game</div>
     </div>
 
+    <footer class="resources-footer">
+      <div class="resources-container">
+        <h3>USEFUL RESOURCES</h3>
+        <div class="resources-grid">
+          <a
+            href="https://developers.cloudflare.com/durable-objects/"
+            target="_blank"
+          >
+            Durable Objects
+          </a>
+          <a
+            href="https://github.com/harshil1712/slicey-booth-game"
+            target="_blank"
+          >
+            GitHub
+          </a>
+          <a href="https://honc.dev" target="_blank"> HONC </a>
+        </div>
+      </div>
+    </footer>
+
     <script>
+      const urlParams = new URLSearchParams(window.location.search);
+      const gameId = urlParams.get("gameId");
       document
         .getElementById("registrationForm")
         .addEventListener("submit", async function (e) {
@@ -149,11 +244,17 @@
 
           const name = document.getElementById("name").value;
           const email = document.getElementById("email").value;
-          const gameId = document.getElementById("gameId").value;
+          const terms = document.getElementById("terms").checked;
           const errorMessage = document.getElementById("errorMessage");
 
           if (!name || !email) {
             errorMessage.textContent = "All fields required";
+            return;
+          }
+
+          if (!terms) {
+            errorMessage.textContent =
+              "Please agree to the terms and conditions to play the game";
             return;
           }
 

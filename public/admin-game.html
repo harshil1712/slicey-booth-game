@@ -221,6 +221,21 @@
       const gameId = urlParams.get("gameId");
       let gameStart = false;
 
+      // Start game when button is clicked
+      const startButton = document.getElementById("startButton");
+      const gameOverlay = document.getElementById("gameOverlay");
+      const gameCanvas = document.querySelector(".game-canvas");
+
+      // Canvas setup
+      const backgroundCanvas = document.getElementById("backgroundCanvas");
+      const phoneCanvas = document.getElementById("phoneCanvas");
+      const sentenceCanvas = document.getElementById("sentenceCanvas");
+      const gameScreen = document.querySelector(".game-screen");
+
+      const backgroundCtx = backgroundCanvas.getContext("2d");
+      const phoneCtx = phoneCanvas.getContext("2d");
+      const sentenceCtx = sentenceCanvas.getContext("2d");
+
       // Update player count
       function updatePlayerCount(count) {
         const playerCount = document.getElementById("playerCount");
@@ -267,6 +282,7 @@
           updateScores(message.data.players);
         }
         if (message.type === "updateObstacles" && message.from === "admin") {
+          gameStart = true;
           obstacles = message.data.obstacles;
         }
         // if (message.type === "playerUpdates" && message.from === "admin") {
@@ -281,8 +297,16 @@
           const { id, acceleration } = message.data;
           // Update player acceleration
           const player = players.find((player) => player.id === id);
-          console.log(player);
           player.acceleration = acceleration;
+        }
+        if (message.type === "end" && message.from === "admin") {
+          console.log("Game Over");
+          gameStart = false;
+          const startButton = document.getElementById("startButton");
+          startButton.disabled = false;
+          startButton.textContent = "RESTART GAME";
+          gameOverlay.style.display = "flex";
+          gameCanvas.style.display = "none";
         }
       };
 
@@ -295,12 +319,10 @@
         );
       };
 
-      // Start game when button is clicked
-      const startButton = document.getElementById("startButton");
-      const gameOverlay = document.getElementById("gameOverlay");
-      const gameCanvas = document.querySelector(".game-canvas");
-
       startButton.addEventListener("click", () => {
+        const startButton = document.getElementById("startButton");
+        startButton.disabled = false;
+        startButton.textContent = "START GAME";
         ws.send(
           JSON.stringify({
             type: "start",
@@ -314,16 +336,6 @@
         displayCurrentSentence();
         refreshDisplay();
       });
-
-      // Canvas setup
-      const backgroundCanvas = document.getElementById("backgroundCanvas");
-      const phoneCanvas = document.getElementById("phoneCanvas");
-      const sentenceCanvas = document.getElementById("sentenceCanvas");
-      const gameScreen = document.querySelector(".game-screen");
-
-      const backgroundCtx = backgroundCanvas.getContext("2d");
-      const phoneCtx = phoneCanvas.getContext("2d");
-      const sentenceCtx = sentenceCanvas.getContext("2d");
 
       function resizeCanvases() {
         const width = gameScreen.clientWidth;
@@ -526,7 +538,7 @@
         );
 
         // Set text properties
-        sentenceCtx.font = '20px Inter, "SF Pro", Arial, sans-serif';
+        sentenceCtx.font = '36px Inter, "SF Pro", Arial, sans-serif';
         sentenceCtx.fillStyle = "white";
         sentenceCtx.textAlign = "center";
 
@@ -554,10 +566,10 @@
 
         // Stop the game after a brief delay
         setTimeout(() => {
-          gameStart = false;
+          gameStart = true;
           ws.send(
             JSON.stringify({
-              type: "end",
+              type: "updateObstacles",
               from: "admin",
             })
           );
@@ -595,8 +607,8 @@
           const phoneSize = PHONE_SIZE * scaleX;
 
           phoneCtx.strokeRect(
-            display.current.x,
-            display.current.y,
+            display.current.x - phoneSize / 2,
+            display.current.y - phoneSize / 2,
             phoneSize,
             phoneSize
           );
@@ -604,13 +616,7 @@
           // Draw center point
           phoneCtx.fillStyle = "red";
           phoneCtx.beginPath();
-          phoneCtx.arc(
-            display.current.x + phoneSize / 2,
-            display.current.y + phoneSize / 2,
-            2,
-            0,
-            Math.PI * 2
-          );
+          phoneCtx.arc(display.current.x, display.current.y, 2, 0, Math.PI * 2);
           phoneCtx.fill();
         });
 
@@ -624,28 +630,17 @@
           const rectHeight = OBSTACLE_HEIGHT * scaleY;
 
           backgroundCtx.strokeRect(
-            Math.round(obstacle.x),
-            Math.round(obstacle.y),
+            obstacle.x - rectWidth / 2,
+            obstacle.y - rectHeight / 2,
             rectWidth,
             rectHeight
           );
-
-          backgroundCtx.fillStyle = "green";
-          backgroundCtx.beginPath();
-          backgroundCtx.arc(
-            Math.round(obstacle.x + rectWidth / 2),
-            Math.round(obstacle.y + rectHeight / 2),
-            2,
-            0,
-            Math.PI * 2
-          );
-          backgroundCtx.fill();
         });
       }
 
       const qr = new QRious({
         element: document.getElementById("qr"),
-        value: window.location.protocol + "//" + window.location.hostname,
+        value: `${window.location.protocol}//${window.location.hostname}?gameId=${gameId}`,
       });
     </script>
   </body>

@@ -1,5 +1,3 @@
-import { DurableObject } from "cloudflare:workers";
-import { Bindings } from ".";
 import { type Connection, Server, type WSMessage } from "partyserver";
 
 type incomingMessage = {
@@ -12,7 +10,8 @@ type incomingMessage = {
     | "end"
     | "score"
     | "updateObstacles"
-    | "playerDetails";
+    | "playerDetails"
+    | "newSentence";
   from: "player" | "admin";
   data?: any;
 };
@@ -28,17 +27,14 @@ export class WebsocketServer extends Server {
   players: Player[] = [];
   obstacles: any[] = [];
   solution: string[] = [];
-  displaySentence: string | null = null;
+  displaySentence: Array<number> = [];
   obstacleInterval: ReturnType<typeof setInterval> | null = null;
   sentences: string[] = [
-    "The quick brown fox jumps over the lazy dog",
-    "The five boxing wizards jump quickly",
-    "Pack my box with five dozen liquor jugs",
-    "How razorback-jumping frogs can level six piqued gymnasts",
-    "Cozy lummox gives smart squid who asks for job pen",
-    "The jay, pig, fox, zebra, and my wolves quack",
-    "Sympathizing would fix Quaker objectives",
-    "Jackdaws love my big sphinx of quartz",
+    "Cloudflare Workers deploy on Region Earth",
+    "With Durable Objects, you can build stateful serverless applications",
+    "HONC stands for Hono, ORM (Drizzle), Name Your DB (Cloudflare D1), and Cloudflare Workers",
+    "PartyServer makes it easy to build WebSocket applications on top of Durable Objects",
+    "You should join our talk on Hono on 14th March, at 15:00!",
   ];
   admin: Connection | null = null;
 
@@ -66,6 +62,7 @@ export class WebsocketServer extends Server {
     const allPlayerIds = this.players.map((p) => p.id);
 
     if (incoming.from === "admin") {
+      console.log("Admin message", incoming.type);
       switch (incoming.type) {
         case "join":
           this.players = this.players.filter(
@@ -76,13 +73,35 @@ export class WebsocketServer extends Server {
               type: "playerCount",
               from: "admin",
               data: { players: this.players },
-            })
+            }),
+            this.players.map((p) => p.id)
           );
-          console.log("Admin joined");
           this.admin = connection;
           break;
         case "start":
+          this.broadcast(
+            JSON.stringify({
+              type: "newSentence",
+              from: "admin",
+            })
+          );
+          console.log("Admin started the game");
+        case "newSentence":
           this.obstacles = await this.initializeObstacles();
+          if (this.obstacles.length === 0) {
+            console.log("Sending end message to admin");
+            this.displaySentence = [];
+            this.players = [];
+            console.log("displaySentence", this.displaySentence);
+            this.broadcast(
+              JSON.stringify({
+                type: "end",
+                from: "admin",
+                data: {},
+              })
+            );
+            break;
+          }
           this.broadcast(
             JSON.stringify({
               type: "updateObstacles",
@@ -92,16 +111,11 @@ export class WebsocketServer extends Server {
               },
             })
           );
-          console.log("Admin started the game");
           break;
         case "end":
-          this.broadcast(
-            JSON.stringify({
-              type: "end",
-              from: "admin",
-              data: {},
-            })
-          );
+          console.log("Admin ended the game");
+
+          this.stopObstacleMovement();
           break;
         case "score":
           this.broadcast(
@@ -167,12 +181,7 @@ export class WebsocketServer extends Server {
     }
   }
 
-  onClose(
-    connection: Connection,
-    code: number,
-    reason: string,
-    wasClean: boolean
-  ): void | Promise<void> {
+  onClose(connection: Connection): void | Promise<void> {
     this.players = this.players.filter((p) => p.id !== connection.id);
     this.broadcast(
       JSON.stringify({
@@ -183,9 +192,18 @@ export class WebsocketServer extends Server {
     );
   }
 
-  // Get a random sentence from the list
-  async getCurrentSentence() {
-    return this.sentences[Math.floor(Math.random() * this.sentences.length)];
+  // Get a random sentence from the list. Check if the sentence is already displayed. If yes, get another one. If no, display it. The displayed sentence is stored in the displaySentence variable which is an array of setences or null
+  async getCurrentSentence(): Promise<string | null> {
+    const index = Math.floor(Math.random() * this.sentences.length);
+    if (this.displaySentence.length !== this.sentences.length) {
+      this.displaySentence.includes(index)
+        ? this.getCurrentSentence()
+        : this.displaySentence.push(index);
+      console.log("Current sentence", this.sentences[index]);
+      return this.sentences[index];
+    }
+    console.log("All sentences displayed. Ending game");
+    return null;
   }
 
   async initializeObstacles(): Promise<
@@ -236,8 +254,22 @@ export class WebsocketServer extends Server {
       clearInterval(this.obstacleInterval);
       this.obstacleInterval = null;
     }
+    this.displaySentence.length === this.sentences.length
+      ? this.broadcast(
+          JSON.stringify({
+            type: "end",
+            from: "admin",
+            data: {},
+          })
+        )
+      : this.broadcast(
+          JSON.stringify({
+            type: "updateObstacles",
+            from: "admin",
+            data: {},
+          })
+        );
   }
-
   updateObstacles() {
     this.obstacles.forEach((obstacle) => {
       obstacle.x += obstacle.dx;
@@ -248,34 +280,6 @@ export class WebsocketServer extends Server {
       if (obstacle.y < 0 || obstacle.y > 600 - 30) obstacle.dy *= -1;
     });
     return this.obstacles;
-  }
-
-  async handleCollisions(phoneId: string, x: number, y: number) {
-    this.obstacles = this.obstacles.filter((obstacle) => {
-      const distX = Math.abs(x - obstacle.x - 50);
-      const distY = Math.abs(y - obstacle.y - 15);
-
-      if (distX > 70 || distY > 35) {
-        return true; // Keep obstacle if no collision
-      }
-
-      if (
-        distX <= 50 ||
-        distY <= 15 ||
-        (distX - 50) ** 2 + (distY - 15) ** 2 <= 400
-      ) {
-        this.solution[obstacle.index] = obstacle.word;
-        // this.updatePlayerScore(phoneId, obstacle.word);
-        this.sendPointsEarned(phoneId, obstacle.word.length);
-        return false; // Remove obstacle on collision
-      }
-      return true;
-    });
-
-    if (this.obstacles.length === 0) {
-      // await this.completeCurrentSentence();
-      await this.initializeObstacles();
-    }
   }
 
   // not required
